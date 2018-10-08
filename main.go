@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"gopkg.in/telegram-bot-api.v4"
+	"io/ioutil"
 	"log"
 	"net/http"
+	_ "os"
 	"strings"
 )
 
@@ -17,12 +19,18 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "not enought parameters, need 2, telegram-user & message")
 		return
 	}
+	bytes, e := ioutil.ReadAll(r.Body)
+	if e == nil {
+	}
+
 	name := split[0]
 	if name == "charm" {
+		sendPhotoToCharm(bytes)
 		sendMessageToCharm(split[1])
 	}
 	if name == "shumik" {
 		sendMessageToShumik(split[1])
+		sendPhotoToShumik(bytes)
 	}
 }
 
@@ -43,6 +51,18 @@ func createBot() *tgbotapi.BotAPI {
 
 func sendMessageToCharm(text string) {
 	message := tgbotapi.NewMessage(150789681, text)
+	bot.Send(message)
+}
+
+func sendPhotoToCharm(bytes []byte) {
+	fileBytes := tgbotapi.FileBytes{"name", bytes}
+	message := tgbotapi.NewPhotoUpload(150789681, fileBytes)
+	bot.Send(message)
+}
+
+func sendPhotoToShumik(bytes []byte) {
+	fileBytes := tgbotapi.FileBytes{"name", bytes}
+	message := tgbotapi.NewPhotoUpload(146395526, fileBytes)
 	bot.Send(message)
 }
 
