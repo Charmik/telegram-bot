@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/go-telegram-bot-api/telegram-bot-api"
 	"github.com/jasonlvhit/gocron"
@@ -22,37 +21,120 @@ var CHAT_IDS_FILE = "chatIds.txt"
 func main() {
 	//scheduleUpdates()
 	getUpdates()
+
+	url := "https://yandex.ru/pogoda/moscow"
+	resp, err := http.Get(url)
+	// handle the error if there is one
+	if err != nil {
+		panic(err)
+	}
+	// do this now so it won't be forgotten
+	defer resp.Body.Close()
+	// reads html as a slice of bytes
+	html, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	// show the HTML code as a string %s
+	//fmt.Printf("%s\n", html)
+	s := string(html[:])
+
+	index := strings.Index(s, "мм рт. ст.")
+	pressure_mm := html[index-29 : index-26]
+	//fmt.Printf("%s\n", pressure_mm)
+
+	indexTemp := strings.Index(s, "<span class=\"temp__value\">")
+	strTemp := html[indexTemp+26:]
+	temperature := strTemp[:strings.Index(string(strTemp[:]), "<")]
+	//fmt.Printf("%s\n", temperature)
+
+	indexWind := strings.Index(s, "<span class=\"wind-speed\">")
+	windStr := html[indexWind+25:]
+	windSpeed := windStr[:strings.Index(string(windStr[:]), "<")]
+	//fmt.Printf("%s\n", windSpeed)
+	windDirection := windStr[strings.Index(string(windStr[:]), "title=\"")+7:]
+	windDirection = windDirection[:strings.Index(string(windDirection[:]), "\"")]
+	windDirection = windDirection[12:]
+	//fmt.Printf("%s\n", windDirection)
+
+	humidityIndex := strings.Index(s, "<i class=\"icon icon_humidity-white term__fact-icon\"></i>")
+	humidity := html[humidityIndex+56:]
+	humidity = humidity[:strings.Index(string(humidity[:]), "<")]
+	//fmt.Printf("%s\n", humidity)
+
+	conditionIndex := strings.Index(s, "link__condition")
+	condition := html[conditionIndex+56:]
+	condition = condition[:strings.Index(string(condition[:]), "<")]
+	condition = condition[strings.Index(string(condition[:]), ">")+1:]
+	//fmt.Printf("%s\n", condition)
+
+	saveToFile(string(pressure_mm[:]), string(temperature[:]), string(humidity[:]), string(windSpeed[:]), string(windDirection[:]), string(condition[:]))
+
 	sendAll()
 }
 
-func sendAll() {
-	resp_body, err := getJsonFromYandexWeather()
-
+func saveToFile(pressure_mm string, temperature string, humidity string, wind_speed string, wind_dir string, condition string) {
+	f, err := os.Create("currentTemperature.txt")
 	if err != nil {
-		fmt.Printf("couldn't call get from yandex-api", err)
+		fmt.Printf("error creating file: %v", err)
 		return
 	}
-	var jsonResponse interface{}
-	parseError := json.Unmarshal(resp_body, &jsonResponse)
-	fmt.Print("parseError: ")
-	fmt.Println(parseError)
-	fmt.Print("response: ")
-	fmt.Println(jsonResponse)
+	defer f.Close()
 
-	jsonMap := jsonResponse.(map[string]interface{})
-	handle(jsonMap)
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	time := time.Now().In(loc).Add(time.Hour*time.Duration(0) +
+		time.Minute*time.Duration(10) +
+		time.Second*time.Duration(0))
+
+	str := fmt.Sprintf("%02d", time.Hour()) + ":" + fmt.Sprintf("%02d", time.Minute()) + "\n\n" +
+		fmt.Sprintf("%-17s", "Давление") + pressure_mm + " мм.рт.ст.\n" +
+		fmt.Sprintf("%-17s", "Температура") + temperature + "\n" +
+		fmt.Sprintf("%-17s", "Отн. влажность") + humidity + "\n" +
+		fmt.Sprintf("%-17s", "Ветер") + wind_speed + " м/c, " + wind_dir + "\n\n" +
+		condition
+		//mapConditionToRussian(condition)
+
+	fmt.Println(str)
+	_, _ = f.WriteString(str)
+}
+
+func sendAll() {
+	/*
+		resp_body, err := getJsonFromYandexWeather()
+
+		if err != nil {
+			fmt.Printf("couldn't call get from yandex-api", err)
+			return
+		}
+		var jsonResponse interface{}
+		parseError := json.Unmarshal(resp_body, &jsonResponse)
+		fmt.Print("parseError: ")
+		fmt.Println(parseError)
+		fmt.Print("response: ")
+		fmt.Println(jsonResponse)
+
+		jsonMap := jsonResponse.(map[string]interface{})
+		handle(jsonMap)
+	*/
 
 	bytes, _ := ioutil.ReadFile(CHAT_IDS_FILE)
 	str := string(bytes)
 	chatIds := strings.Split(str, "\n")
-	for _, chatId := range chatIds {
-		if len(chatId) == 0 {
+	for _, chatIdStr := range chatIds {
+		if len(chatIdStr) == 0 {
 			continue
 		}
-		fmt.Println("send to chatId", chatId)
-		x, _ := strconv.ParseInt(chatId, 10, 64)
-		upload := tgbotapi.NewDocumentUpload(x, "currentTemperature.txt")
+		fmt.Println("send to chatId", chatIdStr)
+		chatId, _ := strconv.ParseInt(chatIdStr, 10, 64)
+		upload := tgbotapi.NewDocumentUpload(chatId, "currentTemperature.txt")
 		bot.Send(upload)
+
+		loc, _ := time.LoadLocation("Europe/Moscow")
+		time := time.Now().In(loc)
+		if time.Hour() == 11 {
+			message := tgbotapi.NewMessage(chatId, "http://old.meteoinfo.ru/forecasts")
+			bot.Send(message)
+		}
 	}
 }
 
