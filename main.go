@@ -49,18 +49,28 @@ func main() {
 	//fmt.Printf("%s\n", temperature)
 
 	indexWind := strings.Index(s, "<span class=\"wind-speed\">")
-	windStr := html[indexWind+25:]
-	windSpeed := windStr[:strings.Index(string(windStr[:]), "<")]
-	//fmt.Printf("%s\n", windSpeed)
-	windDirection := windStr[strings.Index(string(windStr[:]), "title=\"")+7:]
-	windDirection = windDirection[:strings.Index(string(windDirection[:]), "\"")]
-	windDirection = windDirection[12:]
-	//fmt.Printf("%s\n", windDirection)
+	windSpeed := "unknown"
+	windDirection := "unknown"
+	if indexWind != 0 {
+		windStr := html[indexWind+25:]
+		windSpeed = string(windStr[:strings.Index(string(windStr[:]), "<")][:])
+		//fmt.Printf("%s\n", windSpeed)
+		windDirection = string(windStr[strings.Index(string(windStr[:]), "title=\"")+7:][:])
+		windDirection = windDirection[:strings.Index(string(windDirection[:]), "\"")]
+		windDirection = windDirection[12:]
+		//fmt.Printf("%s\n", windDirection)
+	}
 
-	humidityIndex := strings.Index(s, "<i class=\"icon icon_humidity-white term__fact-icon\"></i>")
-	humidity := html[humidityIndex+56:]
-	humidity = humidity[:strings.Index(string(humidity[:]), "<")]
-	//fmt.Printf("%s\n", humidity)
+	humidityIndex := strings.Index(s, "icon icon_humidity-white term__fact-icon")
+	humidity := "unknown"
+	if humidityIndex != 0 {
+		strWithHumidity := string(html[humidityIndex : humidityIndex+100][:])
+		fmt.Println("humidity\n", strWithHumidity)
+		percentIndex := strings.Index(strWithHumidity, "%")
+		left := strWithHumidity[:percentIndex+1]
+		humidity = left[strings.LastIndex(left, ">")+1:]
+		fmt.Printf("%s\n", humidity)
+	}
 
 	conditionIndex := strings.Index(s, "link__condition")
 	condition := html[conditionIndex+56:]
@@ -68,7 +78,7 @@ func main() {
 	condition = condition[strings.Index(string(condition[:]), ">")+1:]
 	//fmt.Printf("%s\n", condition)
 
-	saveToFile(string(pressure_mm[:]), string(temperature[:]), string(humidity[:]), string(windSpeed[:]), string(windDirection[:]), string(condition[:]))
+	saveToFile(string(pressure_mm[:]), string(temperature[:]), humidity[:], windSpeed[:], windDirection[:], string(condition[:]))
 
 	sendAll()
 }
@@ -325,7 +335,10 @@ func createBot() *tgbotapi.BotAPI {
 	bytes, _ := ioutil.ReadFile("telegramKey.txt")
 	botToken := string(bytes)
 
-	bot, _ := tgbotapi.NewBotAPI(botToken)
+	bot, err := tgbotapi.NewBotAPI(botToken)
+	if err != nil {
+		log.Panic(err)
+	}
 	bot.Debug = true
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 	return bot
